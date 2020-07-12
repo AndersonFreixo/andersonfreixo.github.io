@@ -1,40 +1,3 @@
-/*Handlers are on the end of the file!*/
-document.addEventListener("mousemove", mouseMoveHandler, false);
-document.addEventListener("keydown", keyDownHandler, false);
-document.addEventListener("keyup", keyUpHandler, false);
-document.addEventListener("click", clickHandler, false);
-
-let events = {activeLoop: "start",
-              rightPressed: false,
-              leftPressed: false,
-              relativeX: 0,
-              relativeY:0,
-              mouseClick: false};
-
-/*Image loading*/
-let wallpaper = new Image();
-wallpaper.src = `resources/img/wallpaper.png`;
-let logoImg = new Image();
-logoImg.src = "resources/img/logo.png";
-
-/*Button configuration*/
-
-let startButtonImg = new Image();
-startButtonImg.src = "resources/img/start_button.png";
-let startButtonOverImg = new Image();
-startButtonOverImg.src = "resources/img/start_button_over.png";
-
-let startButton = {mouseOver: startButtonOverImg,
-                   mouseOut: startButtonImg,
-                  x: SCREEN_WIDTH/2 - startButtonImg.width/2,
-                  y: 300,
-                  active: "start"};
-
-/*Audio loading*/
-let audioManager = new AudioManager();
-audioManager.loadToSwitcher("paddleHit", "resources/audio/paddle_hit.wav", 4);
-audioManager.loadToSwitcher("brickHit", "resources/audio/brick_hit.wav", 4);
-
 /*Canvas setup*/
 /*This is the DIV where the two canvas are put*/
 let screenDiv = document.getElementById("screen");
@@ -57,31 +20,81 @@ canvas.width = SCREEN_WIDTH;
 
 screenDiv.appendChild(canvas);
 
+/*Managers*/
+let gameState = new GameState;
+let eHandler = new EventHandler(canvas);
+let levelManager = new LevelManager();
+
+levelManager.initLevel();
+
+/*Audio setup*/
+let audioManager = new AudioManager();
+audioManager.loadToSwitcher("paddleHit", "resources/audio/paddle_hit.wav", 4);
+audioManager.loadToSwitcher("brickHit", "resources/audio/brick_hit.wav", 4);
+
+
+/*Image setup*/
+let interface = new InterfaceManager();
+interface.addImage("wallpaper", "resources/img/wallpaper.png");
+interface.addImage("logo", "resources/img/logo.png");
+interface.addImage("startOut", "resources/img/start_button.png");
+interface.addImage("startOver", "resources/img/start_button_over.png");
+interface.addImage("paddle", "resources/img/paddle.png");
+interface.addImage("gamePause", "resources/img/game_pause.png");
+
+
+/*Button configuration*/
+interface.addButton("startButton",
+                    interface.img["startOut"],
+                    interface.img["startOver"],
+                    SCREEN_WIDTH/2 - interface.img["startOut"].width/2,
+                    300,
+                    "start",
+                    function(){
+                      eHandler.events.activeLoop = "main";
+                      canvas.style.cursor = "None"});
+
 /*Entities*/
 let paddle = new Paddle(x       = (canvas.width - PAD_WIDTH)/2,
                         y       = canvas.height - PAD_HEIGHT,
                         height  = PAD_HEIGHT,
                         width   = PAD_WIDTH,
-                        color   = "#0095DD");
+                        image   = interface.img["paddle"]);
 
 let ball = new Ball(x       = canvas.width/2,
                     y       = canvas.height-(PAD_HEIGHT+BALL_RAD),
                     radius  = BALL_RAD,
                     color   = `rgb(230, 0, 5)`);
 
-/*levelManager manages bricks rendering and info.*/
-let levelManager = new LevelManager();
-levelManager.initLevel();
-
-let gameState = new GameState;
-
-
 
 /*Run the game*/
-let reqReference = requestAnimationFrame(startLoop);
+run();
+
+/*Main loop*/
+function run(timestamp){
+  if (eHandler.events.activeLoop == "start"){
+    startLoop();
+  }
+  else if (eHandler.events.activeLoop == "main"){
+    if (eHandler.events.pause == false){
+      gameLoop();
+    }
+    else{
+        let pauseImg = interface.img["gamePause"];
+        ctx.drawImage(pauseImg, 0, (canvas.height-pauseImg.height)/2);
+    }
+  }
+  else if (eHandler.events.activeLoop == "help"){
+
+  }
+  else if (eHandler.events.activeLoop == "gameOver"){
+
+  }
+  requestAnimationFrame(run);
+}
 
 function startLoop(){
-      ctx.drawImage(logoImg, 0, 0, 320, 460);
+      ctx.drawImage(interface.img["logo"], 0, 0, 320, 460);
 
       /*A black strip in the bottom of the screen*/
       ctx.beginPath();
@@ -97,159 +110,87 @@ function startLoop(){
       headerCtx.fill();
       headerCtx.closePath();
 
-      if (isCoordInside(events.relativeX,
-                        events.relativeY,
-                        startButton.x,
-                        startButton.y,
-                        startButton.mouseOver.width,
-                        startButton.mouseOver.height)){
+      interface.renderButtons("start", ctx, canvas, eHandler.events.relativeX,
+                         eHandler.events.relativeY);
 
-
-        ctx.drawImage(startButton.mouseOver, startButton.x, startButton.y);
-        canvas.style.cursor = "Pointer";
-      }
-      else{
-        ctx.drawImage(startButton.mouseOut, startButton.x, startButton.y);
-        canvas.style.cursor = "Default";
-      }
-      if (events.activeLoop == "main"){
-        canvas.style.cursor = "None";
-        cancelAnimationFrame(startLoop);
-        requestAnimationFrame(gameLoop);
-      }
-      else{
-        reqReference = requestAnimationFrame(startLoop);
+      if (eHandler.events.mouseClick == true){
+          eHandler.events.mouseClick = false;
+          interface.processClick("start", eHandler.events.relativeX, eHandler.events.relativeY);
       }
 }
 
 function gameLoop(timestamp){
-    if(canvas.getContext){
-        /*updates*/
-        paddle.update(events);
-        ball.update(events);
 
-        /*Rendering
-        *All game entities are rendered in "canvas"
-        and the game state is rendered apart in headerCanvas*/
-        ctx.drawImage(wallpaper, 0, 0, SCREEN_WIDTH, GAME_HEIGHT);
-        paddle.render(ctx);
-        ball.render(ctx);
-        levelManager.render(ctx);
-        gameState.render(headerCtx);
+      /*updates*/
+      paddle.update(eHandler.events);
+      ball.update(eHandler.events);
 
-        /*Collision detection*/
-        let touching = levelManager.checkCollision(ball);
+      /*Rendering
+      *All game entities are rendered in "canvas"
+      and the game state is rendered apart in headerCanvas*/
+      ctx.drawImage(interface.img["wallpaper"], 0, 0, SCREEN_WIDTH, GAME_HEIGHT);
+      paddle.render(ctx);
+      ball.render(ctx);
+      levelManager.render(ctx);
+      gameState.render(headerCtx);
 
-        if (touching != ""){
-            audioManager.playSound("brickHit");
-            gameState.score += 10;
-            if (touching.includes("V")){
-              ball.changeDirVertical();
-            }
-            if (touching.includes("S")){
-              ball.changeDirHorizontal();
-            }
+      /*Collision detection*/
+      let touching = levelManager.checkCollision(ball);
+
+      if (touching != ""){
+          audioManager.playSound("brickHit");
+          gameState.score += 10;
+          if (touching.includes("V")){
+            ball.changeDirVertical();
+          }
+          if (touching.includes("S")){
+            ball.changeDirHorizontal();
+          }
 
 
-            if (levelManager.isLevelComplete()){
-              if(!levelManager.nextLevel()){
-                alert("YOU WIN, CONGRATULATIONS!");
-                document.location.reload();
-              }
-              else{
-                levelManager.initLevel();
-                ball.toStartPosition();
-              }
-            }
-        }
-
-        /*ball detection*/
-        let col = ball.checkWallCollision(canvas).toUpperCase();
-    //    if(col == "RIGHT" || col == "LEFT" || col == "TOP"){
-    //      audioManager.playSound("wallHit");
-    //    }
-        switch(col){
-          case ("RIGHT"):
-            ball.setDirection("LEFT");
-            break;
-          case ("LEFT"):
-            ball.setDirection("RIGHT");
-            break;
-          case ("TOP"):
-            ball.setDirection("DOWN");
-            break;
-          case ("BOTTOM"):
-            if (gameState.lives >= 1){
-              gameState.lives--;
-              ball.x = canvas.width/2;
-              ball.y = canvas.height -30;
-              ball.setDirection("RIGHT");
-              ball.setDirection("UP");
-              paddle.x = (canvas.width-paddle.width)/2;
+          if (levelManager.isLevelComplete()){
+            if(!levelManager.nextLevel()){
+              alert("YOU WIN, CONGRATULATIONS!");
+              document.location.reload();
             }
             else{
-              alert("Game Over!!!");
-              location.reload();
+              levelManager.initLevel();
+              ball.toStartPosition();
             }
-            break;
+          }
+      }
+
+      /*ball detection*/
+      let col = ball.checkWallCollision(canvas).toUpperCase();
+  //    if(col == "RIGHT" || col == "LEFT" || col == "TOP"){
+  //      audioManager.playSound("wallHit");
+  //    }
+      if (col == "RIGHT" || col == "LEFT"){
+        ball.changeDirHorizontal();
+      }
+      else if (col == "TOP"){
+        ball.changeDirVertical();
+      }
+      else if (col == "BOTTOM"){
+        if (gameState.lives >= 1){
+          gameState.lives--;
+          ball.x = canvas.width/2;
+          ball.y = canvas.height -30;
+          ball.dx = 0.5;
+          ball.dy = -0.5;
+          paddle.x = (canvas.width-paddle.width)/2;
         }
-
-
-        if(Utils.isColliding(ball.getRectangle(), paddle) && ball.dy == DIR_DOWN){
-            audioManager.playSound("paddleHit");
-
-            if (ball.x > paddle.x + paddle.width/2){
-              ball.setDirection("RIGHT");
-            }
-            else ball.setDirection("LEFT");
-          ball.changeDirVertical();
+        else{
+          alert("Game Over!!!");
+          location.reload();
         }
+      }
+      let p = paddle.hasTouched(ball.getRectangle());
+      if (p  != -1 && ball.dy > 0){
+          console.log(p);
+          audioManager.playSound("paddleHit");
+          ball.processDirection(p);
+      }
 
-    }
-    else{
-        document.write("Oooops, no canvas!");
-    }
-    requestAnimationFrame(gameLoop);
-}
 
-function isCoordInside(x1, y1, x2, y2, width, height){
-  if (x1 >= x2 && x1 <= x2+width &&
-    y1 >= y2 && y1 <= y2+height){
-      return true;
-  }
-  else return false;
-}
-
-/*Event handlers*/
-function mouseMoveHandler(e){
-  events.relativeX = e.clientX - canvas.offsetLeft;
-  events.relativeY = e.clientY - canvas.offsetTop;
-}
-
-function keyDownHandler(e){
-    if (e.key == "Right" || e.key == "ArrowRight"){
-        events.rightPressed = true;
-    }
-    else if(e.key == "Left" || e.key == "ArrowLeft"){
-        events.leftPressed = true;
-    }
-}
-
-function keyUpHandler(e){
-    if (e.key == "Right" || e.key == "ArrowRight"){
-        events.rightPressed = false;
-    }
-    else if (e.key == "Left" || e.key == "ArrowLeft"){
-        events.leftPressed = false;
-    }
-}
-
-function clickHandler(e){
-  let x = e.clientX - canvas.offsetLeft;
-  let y = e.clientY - canvas.offsetTop;
-  if (events.activeLoop = "start" &&
-  isCoordInside(x, y, startButton.x, startButton.y,
-                startButton.mouseOut.width, startButton.mouseOut.height)){
-      events.activeLoop = "main";
-  }
 }
